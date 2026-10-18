@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analizador de Espacio en Disco</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans flex flex-col">
+
+    <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="p-2.5 bg-sky-500/10 border border-sky-500/30 rounded-xl text-sky-400">
+                    <i class="fa-solid fa-hard-drive text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">
+                        Analizador de Disco Local
+                    </h1>
+                    <p class="text-xs text-slate-400">Inspecciona y descubre qué archivos ocupan más espacio</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <!-- Input de archivos oculto para compatibilidad total/selector clásico -->
+                <input type="file" id="legacyFolderInput" webkitdirectory directory multiple class="hidden">
+                
+                <button id="selectDirBtn" class="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-medium px-4 py-2 rounded-xl shadow-lg shadow-sky-600/20 transition-all duration-200 cursor-pointer text-sm">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <span>Elegir Carpeta</span>
+                </button>
+                <button id="selectAppsBtn" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium px-4 py-2 rounded-xl shadow-lg shadow-indigo-600/20 transition-all duration-200 cursor-pointer text-sm" title="Analizar carpetas donde Windows guarda los programas">
+                    <i class="fa-brands fa-windows text-indigo-200"></i>
+                    <span>Analizar Programas Win 11</span>
+                </button>
+                <button id="selectAdvancedBtn" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium px-4 py-2 rounded-xl border border-slate-700 transition-all duration-200 cursor-pointer text-sm" title="Usar API Nativa">
+                    <i class="fa-solid fa-wand-magic-sparkles text-sky-400"></i>
+                    <span class="hidden sm:inline">Modo API Nativo</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col gap-6 relative">
+
+        <!-- Cartel de estado inmediato durante la preparación de la lectura -->
+        <div id="initialPreparingBanner" class="hidden bg-sky-900/40 border border-sky-500/50 rounded-2xl p-4 text-sky-200 flex items-center justify-between shadow-xl backdrop-blur animate-pulse">
+            <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-sky-500/20 rounded-xl text-sky-400">
+                    <i class="fa-solid fa-spinner fa-spin text-2xl"></i>
+                </div>
+                <div>
+                    <strong class="text-sky-300 font-semibold text-base">¡Estoy trabajando en ello!</strong>
+                    <p class="text-xs text-sky-200/80">Accediendo al sistema de archivos y indexando carpetas... Por favor espera un momento.</p>
+                </div>
+            </div>
+            <span class="px-3 py-1 bg-sky-500/20 border border-sky-400/30 text-sky-300 text-xs rounded-full font-mono font-medium shrink-0 hidden sm:inline-block">Procesando...</span>
+        </div>
+
+        <!-- Banner Informativo explicativo de Windows 11 & límite de navegador -->
+        <div class="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-sm text-amber-200 flex items-start gap-3 shadow-inner">
+            <i class="fa-solid fa-circle-exclamation text-amber-400 text-xl mt-0.5 shrink-0"></i>
+            <div>
+                <strong class="text-amber-300 font-semibold">¿Cómo analizar el espacio de tus Programas en Windows 11?</strong>
+                <p class="mt-1 text-xs text-amber-200/80 leading-relaxed">
+                    Por seguridad del navegador no se puede leer la lista del registro del sistema directamente. Sin embargo, el 95% del tamaño de tus programas de Windows 11 está en:
+                    <code class="bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/30 font-mono">C:\Archivos de Programa</code>, 
+                    <code class="bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/30 font-mono">C:\Program Files (x86)</code> y 
+                    <code class="bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/30 font-mono">C:\Users\TuUsuario\AppData</code>.
+                    Haz clic en <strong class="text-indigo-300">"Analizar Programas Win 11"</strong> o arrastra cualquiera de esas carpetas aquí para medir el peso exacto de cada aplicación o juego instalados.
+                </p>
+            </div>
+        </div>
+
+        <!-- Dashboard Stats Area (Inicialmente oculto o vacío) -->
+        <div id="statsBar" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 hidden">
+            <div class="bg-slate-800/80 border border-slate-700/50 rounded-xl p-4 flex items-center gap-4">
+                <div class="p-3 bg-sky-500/10 text-sky-400 rounded-lg"><i class="fa-solid fa-database text-xl"></i></div>
+                <div>
+                    <div class="text-xs text-slate-400 font-medium">Tamaño Total Analizado</div>
+                    <div id="totalSizeText" class="text-xl font-bold text-slate-100">0 B</div>
+                </div>
+            </div>
+            <div class="bg-slate-800/80 border border-slate-700/50 rounded-xl p-4 flex items-center gap-4">
+                <div class="p-3 bg-indigo-500/10 text-indigo-400 rounded-lg"><i class="fa-solid fa-file-lines text-xl"></i></div>
+                <div>
+                    <div class="text-xs text-slate-400 font-medium">Archivos Totales</div>
+                    <div id="totalFilesText" class="text-xl font-bold text-slate-100">0</div>
+                </div>
+            </div>
+            <div class="bg-slate-800/80 border border-slate-700/50 rounded-xl p-4 flex items-center gap-4">
+                <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-lg"><i class="fa-solid fa-folder text-xl"></i></div>
+                <div>
+                    <div class="text-xs text-slate-400 font-medium">Subcarpetas</div>
+                    <div id="totalFoldersText" class="text-xl font-bold text-slate-100">0</div>
+                </div>
+            </div>
+            <div class="bg-slate-800/80 border border-slate-700/50 rounded-xl p-4 flex items-center gap-4">
+                <div class="p-3 bg-purple-500/10 text-purple-400 rounded-lg"><i class="fa-solid fa-file-circle-check text-xl"></i></div>
+                <div>
+                    <div class="text-xs text-slate-400 font-medium">Extensión Dominante</div>
+                    <div id="topExtensionText" class="text-xl font-bold text-slate-100">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Estado Inicial / Empty State / Dropzone -->
+        <div id="emptyState" class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-sky-500/50 transition-colors rounded-2xl p-12 text-center bg-slate-800/20 cursor-pointer">
+            <div class="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center text-slate-500 mb-4 border border-slate-700">
+                <i class="fa-solid fa-folder-tree text-3xl text-sky-400"></i>
+            </div>
+            <h2 class="text-xl font-semibold text-slate-200 mb-2">Comienza a Analizar tu Almacenamiento o Programas</h2>
+            <p class="text-slate-400 max-w-md mb-6 text-sm">
+                Selecciona una carpeta, usa el modo especial para <span class="text-indigo-300 font-medium">Programas de Windows 11</span> o <span class="text-sky-300 font-medium">arrastra y suelta aquí cualquier carpeta</span> de software/juegos.
+            </p>
+            <div class="flex flex-wrap gap-3 justify-center">
+                <button id="emptySelectBtn" class="bg-sky-600 hover:bg-sky-500 text-white font-medium px-6 py-3 rounded-xl shadow-lg transition-all cursor-pointer flex items-center gap-2">
+                    <i class="fa-solid fa-folder-open"></i> Seleccionar Carpeta
+                </button>
+                <button id="emptyAppsBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-6 py-3 rounded-xl shadow-lg transition-all cursor-pointer flex items-center gap-2">
+                    <i class="fa-brands fa-windows"></i> Analizar Programas Win 11
+                </button>
+            </div>
+        </div>
+
+        <!-- Bar de Progreso del Escaneo -->
+        <div id="progressArea" class="hidden bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl text-center space-y-4">
+            <div class="flex items-center justify-between text-sm">
+                <span class="text-sky-400 font-semibold flex items-center gap-2">
+                    <i class="fa-solid fa-circle-notch animate-spin"></i>
+                    <span id="scanStatusTitle">Analizando archivos...</span>
+                </span>
+                <span id="progressStats" class="text-slate-300 font-mono">0 archivos procesados</span>
+            </div>
+            <div class="w-full bg-slate-700 rounded-full h-3 overflow-hidden">
+                <div id="progressBar" class="bg-gradient-to-r from-sky-500 to-indigo-500 h-full w-0 transition-all duration-150"></div>
+            </div>
+            <div id="currentPath" class="text-xs text-slate-400 font-mono truncate text-left max-w-full">
+                Preparando el análisis...
+            </div>
+        </div>
+
+        <!-- Visualización Principales Resultados -->
+        <div id="resultsArea" class="hidden flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Columna Izquierda / Centro: Gráfica y Lista de Carpetas/Archivos -->
+            <div class="lg:col-span-2 flex flex-col gap-6">
+                <!-- Gráfico de distribución de tamaño -->
+                <div class="bg-slate-800/90 border border-slate-700 rounded-2xl p-5 shadow-lg">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-base font-semibold text-slate-200 flex items-center gap-2">
+                            <i class="fa-solid fa-chart-bar text-sky-400"></i>
+                            Mayores Carpetas / Archivos
+                        </h3>
+                    </div>
+                    <div class="h-64 relative">
+                        <canvas id="sizeChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Tabla/Lista Detallada con migas de pan (Breadcrumb) -->
+                <div class="bg-slate-800/90 border border-slate-700 rounded-2xl p-5 shadow-lg flex-1 flex flex-col min-w-0">
+                    <!-- Navegación por Migas de Pan (Breadcrumb) -->
+                    <div class="flex items-center gap-2 pb-4 mb-4 border-b border-slate-700 text-sm overflow-x-auto custom-scrollbar" id="breadcrumb">
+                        <!-- Generado dinámicamente -->
+                    </div>
+
+                    <!-- Tabla de contenidos -->
+                    <div class="overflow-x-auto flex-1 custom-scrollbar w-full">
+                        <table class="w-full text-left text-sm table-auto md:table-fixed">
+                            <thead class="text-xs uppercase bg-slate-900/50 text-slate-400 border-b border-slate-700">
+                                <tr>
+                                    <th class="py-3 px-3 w-5/12">Nombre</th>
+                                    <th class="py-3 px-2 w-2/12 cursor-pointer hover:text-white" id="sortSizeBtn">
+                                        Tamaño <i class="fa-solid fa-sort text-[10px]"></i>
+                                    </th>
+                                    <th class="py-3 px-2 w-3/12">% del Total</th>
+                                    <th class="py-3 px-2 w-2/12 text-right">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="directoryTableBody" class="divide-y divide-slate-700/50">
+                                <!-- Filas dinámicas -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Columna Derecha: Top Archivos Más Pesados Globales & Tipos de Archivos -->
+            <div class="flex flex-col gap-6">
+                
+                <!-- Desglose por Tipo de Archivo -->
+                <div class="bg-slate-800/90 border border-slate-700 rounded-2xl p-5 shadow-lg">
+                    <h3 class="text-base font-semibold text-slate-200 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-pie-chart text-purple-400"></i>
+                        Por Categoria de Archivo
+                    </h3>
+                    <div class="space-y-3" id="categoriesList">
+                        <!-- Categorías dinámicas -->
+                    </div>
+                </div>
+
+                <!-- Top 10 Archivos Individuales más Grandes -->
+                <div class="bg-slate-800/90 border border-slate-700 rounded-2xl p-5 shadow-lg flex-1">
+                    <h3 class="text-base font-semibold text-slate-200 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-fire text-amber-400"></i>
+                        Top 10 Archivos Más Pesados
+                    </h3>
+                    <div class="space-y-2.5 overflow-y-auto max-h-[400px] custom-scrollbar pr-1" id="topFilesList">
+                        <!-- Dinámico -->
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <script>
+        // Declaración de Variables de Estado
+        let rootNode = null;
+        let currentDirectoryNode = null;
+        let totalFilesCount = 0;
+        let totalFoldersCount = 0;
+        let globalTopFiles = [];
+        let extensionStats = {};
+        let sizeChartInstance = null;
+
+        // Lista de patrones y nombres típicos de carpetas/archivos de sistema a ignorar
+        const IGNORED_SYSTEM_NAMES = new Set([
+            'system volume information',
+            '$recycle.bin',
+            '$recyle.bin',
+            'pagefile.sys',
+            'hiberfil.sys',
+            'swapfile.sys',
+            'dumpstack.log',
+            '.ds_store',
+            'thumbs.db',
+            'desktop.ini'
+        ]);
+
+        // Categorías por Extensión
+        const CATEGORY_MAP = {
+            'Vídeos': ['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'm4v'],
+            'Imágenes': ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'bmp', 'ico', 'heic'],
+            'Audio': ['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'],
+            'Documentos': ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'epub'],
+            'Archivos Compresos': ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'],
+            'Ejecutables/Programas': ['exe', 'msi', 'app', 'dmg', 'deb', 'rpm', 'bat', 'sh', 'dll', 'sys', 'dat']
+        };
+
+        // Elementos DOM
+        const selectDirBtn = document.getElementById('selectDirBtn');
+        const selectAppsBtn = document.getElementById('selectAppsBtn');
+        const selectAdvancedBtn = document.getElementById('selectAdvancedBtn');
+        const emptySelectBtn = document.getElementById('emptySelectBtn');
+        const emptyAppsBtn = document.getElementById('emptyAppsBtn');
+        const legacyFolderInput = document.getElementById('legacyFolderInput');
+        const emptyState = document.getElementById('emptyState');
+        const progressArea = document.getElementById('progressArea');
+        const progressBar = document.getElementById('progressBar');
+        const progressStats = document.getElementById('progressStats');
+        const currentPath = document.getElementById('currentPath');
+        const resultsArea = document.getElementById('resultsArea');
+        const statsBar = document.getElementById('statsBar');
+        const initialPreparingBanner = document.getElementById('initialPreparingBanner');
+        const scanStatusTitle = document.getElementById('scanStatusTitle');
+
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        function getItemIcon(item) {
+            if (item.type === 'directory') {
+                return '<i class="fa-solid fa-folder text-amber-400"></i>';
+            }
+            const ext = item.name.split('.').pop().toLowerCase();
+            if (CATEGORY_MAP['Vídeos'].includes(ext)) return '<i class="fa-solid fa-file-video text-rose-400"></i>';
+            if (CATEGORY_MAP['Imágenes'].includes(ext)) return '<i class="fa-solid fa-file-image text-emerald-400"></i>';
+            if (CATEGORY_MAP['Audio'].includes(ext)) return '<i class="fa-solid fa-file-audio text-purple-400"></i>';
+            if (CATEGORY_MAP['Archivos Compresos'].includes(ext)) return '<i class="fa-solid fa-file-zipper text-amber-500"></i>';
+            if (CATEGORY_MAP['Documentos'].includes(ext)) return '<i class="fa-solid fa-file-lines text-sky-400"></i>';
+            if (CATEGORY_MAP['Ejecutables/Programas'].includes(ext)) return '<i class="fa-solid fa-gears text-indigo-400"></i>';
+            return '<i class="fa-solid fa-file text-slate-400"></i>';
+        }
+
+        function isSystemOrIgnored(name) {
+            if (!name) return false;
+            return IGNORED_SYSTEM_NAMES.has(name.toLowerCase());
+        }
+
+        function resetState() {
+            emptyState.classList.add('hidden');
+            resultsArea.classList.add('hidden');
+            statsBar.classList.add('hidden');
+            initialPreparingBanner.classList.remove('hidden');
+            progressArea.classList.remove('hidden');
+
+            totalFilesCount = 0;
+            totalFoldersCount = 0;
+            globalTopFiles = [];
+            extensionStats = {};
+            
+            progressBar.style.width = '0%';
+            if (scanStatusTitle) scanStatusTitle.innerText = 'Trabajando... Preparando lista de archivos';
+            progressStats.innerText = 'Inicializando...';
+            currentPath.innerText = 'Leyendo estructura de la carpeta seleccionada...';
+        }
+
+        // PROCESAMIENTO ASÍNCRONO POR LOTES (Evita el congelamiento de la UI)
+        async function processFileListInBatches(files) {
+            resetState();
+
+            // Ceder control a la UI inmediatamente para que aparezca el mensaje "Estoy trabajando"
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            if (!files || files.length === 0) {
+                initialPreparingBanner.classList.add('hidden');
+                progressArea.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            const total = files.length;
+            const firstPath = files[0].webkitRelativePath || files[0].name;
+            const rootFolderName = firstPath.includes('/') ? firstPath.split('/')[0] : 'Carpeta Seleccionada';
+
+            rootNode = {
+                name: rootFolderName,
+                type: 'directory',
+                children: [],
+                size: 0,
+                parent: null
+            };
+
+            const dirMap = new Map();
+            dirMap.set('', rootNode);
+
+            const batchSize = 250; // Procesar en lotes optimizados para fluidez
+            let processed = 0;
+
+            if (scanStatusTitle) scanStatusTitle.innerText = 'Escaneando e indexando archivos...';
+
+            for (let i = 0; i < total; i += batchSize) {
+                const chunk = files.slice(i, i + batchSize);
+
+                for (const file of chunk) {
+                    const relativePath = file.webkitRelativePath || file.name;
+                    const parts = relativePath.split('/');
+
+                    if (parts.some(p => isSystemOrIgnored(p))) {
+                        continue;
+                    }
+
+                    const fileName = parts.pop();
+                    let currentPathStr = '';
+
+                    for (let j = 0; j < parts.length; j++) {
+                        const partName = parts[j];
+                        const parentPathStr = currentPathStr;
+                        currentPathStr = currentPathStr ? `${currentPathStr}/${partName}` : partName;
+
+                        if (!dirMap.has(currentPathStr)) {
+                            const parentNode = dirMap.get(parentPathStr);
+                            const newDirNode = {
+                                name: partName,
+                                type: 'directory',
+                                children: [],
+                                size: 0,
+                                parent: parentNode
+                            };
+                            parentNode.children.push(newDirNode);
+                            dirMap.set(currentPathStr, newDirNode);
+                            totalFoldersCount++;
+                        }
+                    }
+
+                    const targetDir = dirMap.get(currentPathStr) || rootNode;
+                    const fileSize = file.size || 0;
+                    totalFilesCount++;
+
+                    const fileNode = {
+                        name: fileName,
+                        type: 'file',
+                        size: fileSize,
+                        parent: targetDir
+                    };
+
+                    targetDir.children.push(fileNode);
+
+                    let p = targetDir;
+                    while (p) {
+                        p.size += fileSize;
+                        p = p.parent;
+                    }
+
+                    const ext = fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : 'Sin extensión';
+                    extensionStats[ext] = (extensionStats[ext] || 0) + fileSize;
+
+                    globalTopFiles.push({ name: fileName, size: fileSize, path: relativePath });
+                }
+
+                processed += chunk.length;
+                const percentage = Math.min(100, Math.round((processed / total) * 100));
+                
+                // Actualizar la interfaz progresivamente
+                progressBar.style.width = `${percentage}%`;
+                progressStats.innerText = `${processed.toLocaleString()} / ${total.toLocaleString()} archivos (${percentage}%)`;
+                if (chunk.length > 0) {
+                    currentPath.innerText = chunk[chunk.length - 1].webkitRelativePath || chunk[chunk.length - 1].name;
+                }
+
+                // Ceder el control al motor JS para refrescar pantalla e interactividad
+                await new Promise(resolve => setTimeout(resolve, 8));
+            }
+
+            // Ordenar ranking global
+            globalTopFiles.sort((a, b) => b.size - a.size);
+            if (globalTopFiles.length > 10) {
+                globalTopFiles = globalTopFiles.slice(0, 10);
+            }
+
+            // Ocultar mensajes de carga preliminar y mostrar dashboard
+            initialPreparingBanner.classList.add('hidden');
+            progressArea.classList.add('hidden');
+            statsBar.classList.remove('hidden');
+            resultsArea.classList.remove('hidden');
+
+            currentDirectoryNode = rootNode;
+            updateStatsUI();
+            renderBreadcrumb();
+            renderCurrentDirectory();
+            renderTopFiles();
+            renderCategories();
+            renderChart();
+        }
+
+        // Listener del selector de carpetas
+        legacyFolderInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length > 0) {
+                // Notificación visual previa antes de cargar datos masivos
+                resetState();
+                setTimeout(() => processFileListInBatches(files), 60);
+            }
+            legacyFolderInput.value = '';
+        });
+
+        // Soporte de Drag & Drop
+        emptyState.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            emptyState.classList.add('border-sky-500', 'bg-sky-500/10');
+        });
+
+        emptyState.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            emptyState.classList.remove('border-sky-500', 'bg-sky-500/10');
+        });
+
+        emptyState.addEventListener('drop', (e) => {
+            e.preventDefault();
+            emptyState.classList.remove('border-sky-500', 'bg-sky-500/10');
+
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const files = Array.from(e.dataTransfer.files);
+                resetState();
+                setTimeout(() => processFileListInBatches(files), 60);
+            }
+        });
+
+        // Método API Nativo
+        async function startAnalysisAPI() {
+            try {
+                if (!window.showDirectoryPicker) {
+                    legacyFolderInput.click();
+                    return;
+                }
+
+                const handle = await window.showDirectoryPicker();
+                resetState();
+
+                rootNode = {
+                    name: handle.name,
+                    type: 'directory',
+                    handle: handle,
+                    children: [],
+                    size: 0,
+                    parent: null
+                };
+
+                currentPath.innerText = handle.name;
+                progressStats.innerText = "Escaneo en curso...";
+                if (scanStatusTitle) scanStatusTitle.innerText = "Trabajando en el directorio nativo...";
+
+                await scanDirectory(handle, rootNode);
+
+                initialPreparingBanner.classList.add('hidden');
+                progressArea.classList.add('hidden');
+                statsBar.classList.remove('hidden');
+                resultsArea.classList.remove('hidden');
+
+                currentDirectoryNode = rootNode;
+                updateStatsUI();
+                renderBreadcrumb();
+                renderCurrentDirectory();
+                renderTopFiles();
+                renderCategories();
+                renderChart();
+
+            } catch (err) {
+                initialPreparingBanner.classList.add('hidden');
+                if (err.name !== 'AbortError') {
+                    console.warn("Recurriendo a selector estándar:", err);
+                    legacyFolderInput.click();
+                } else {
+                    progressArea.classList.add('hidden');
+                    if (!rootNode) emptyState.classList.remove('hidden');
+                }
+            }
+        }
+
+        async function scanDirectory(dirHandle, parentNode) {
+            try {
+                const entries = dirHandle.values();
+
+                for await (const entry of entries) {
+                    if (isSystemOrIgnored(entry.name)) continue;
+
+                    if (entry.kind === 'file') {
+                        try {
+                            const fileData = await entry.getFile();
+                            const fileSize = fileData.size;
+                            totalFilesCount++;
+
+                            const fileNode = {
+                                name: entry.name,
+                                type: 'file',
+                                size: fileSize,
+                                parent: parentNode
+                            };
+
+                            parentNode.children.push(fileNode);
+                            parentNode.size += fileSize;
+
+                            const ext = entry.name.includes('.') ? entry.name.split('.').pop().toLowerCase() : 'Sin extensión';
+                            extensionStats[ext] = (extensionStats[ext] || 0) + fileSize;
+
+                            globalTopFiles.push({ name: entry.name, size: fileSize, path: getFullPath(fileNode) });
+                            globalTopFiles.sort((a, b) => b.size - a.size);
+                            if (globalTopFiles.length > 10) globalTopFiles.pop();
+
+                        } catch (e) {}
+
+                        if (totalFilesCount % 40 === 0) {
+                            progressStats.innerText = `${totalFilesCount.toLocaleString()} archivos procesados`;
+                            currentPath.innerText = `${dirHandle.name}/${entry.name}`;
+                            await new Promise(r => setTimeout(r, 0));
+                        }
+
+                    } else if (entry.kind === 'directory') {
+                        totalFoldersCount++;
+                        const childDirNode = {
+                            name: entry.name,
+                            type: 'directory',
+                            handle: entry,
+                            children: [],
+                            size: 0,
+                            parent: parentNode
+                        };
+
+                        parentNode.children.push(childDirNode);
+                        
+                        try {
+                            await scanDirectory(entry, childDirNode);
+                        } catch (dirErr) {}
+
+                        parentNode.size += childDirNode.size;
+                    }
+                }
+            } catch (e) {}
+        }
+
+        function getFullPath(node) {
+            let path = node.name;
+            let curr = node.parent;
+            while (curr) {
+                path = curr.name + '/' + path;
+                curr = curr.parent;
+            }
+            return path;
+        }
+
+        function updateStatsUI() {
+            document.getElementById('totalSizeText').innerText = formatBytes(rootNode.size);
+            document.getElementById('totalFilesText').innerText = totalFilesCount.toLocaleString();
+            document.getElementById('totalFoldersText').innerText = totalFoldersCount.toLocaleString();
+
+            let topExt = '-';
+            let maxExtSize = 0;
+            for (const [ext, size] of Object.entries(extensionStats)) {
+                if (size > maxExtSize) {
+                    maxExtSize = size;
+                    topExt = '.' + ext;
+                }
+            }
+            document.getElementById('topExtensionText').innerText = topExt;
+        }
+
+        function renderBreadcrumb() {
+            const container = document.getElementById('breadcrumb');
+            container.innerHTML = '';
+
+            let chain = [];
+            let curr = currentDirectoryNode;
+            while (curr) {
+                chain.unshift(curr);
+                curr = curr.parent;
+            }
+
+            chain.forEach((node, index) => {
+                const isLast = index === chain.length - 1;
+                const btn = document.createElement('button');
+                btn.className = `flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${
+                    isLast ? 'bg-sky-500/20 text-sky-300 font-semibold' : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                }`;
+                btn.innerHTML = `<i class="fa-solid ${index === 0 ? 'fa-hard-drive' : 'fa-folder'} text-xs"></i> ${node.name}`;
+                btn.onclick = () => {
+                    currentDirectoryNode = node;
+                    renderBreadcrumb();
+                    renderCurrentDirectory();
+                    renderChart();
+                };
+
+                container.appendChild(btn);
+
+                if (!isLast) {
+                    const sep = document.createElement('span');
+                    sep.className = 'text-slate-600';
+                    sep.innerHTML = '<i class="fa-solid fa-chevron-right text-xs"></i>';
+                    container.appendChild(sep);
+                }
+            });
+        }
+
+        function renderCurrentDirectory() {
+            const tbody = document.getElementById('directoryTableBody');
+            tbody.innerHTML = '';
+
+            const items = [...currentDirectoryNode.children].sort((a, b) => b.size - a.size);
+
+            if (items.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="py-8 text-center text-slate-500">
+                            Carpeta vacía
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            items.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-700/40 transition-colors group';
+
+                const percent = rootNode.size > 0 ? ((item.size / rootNode.size) * 100).toFixed(1) : '0';
+
+                tr.innerHTML = `
+                    <td class="py-2.5 px-3 font-medium text-slate-200 min-w-0">
+                        <div class="flex items-center gap-2 overflow-hidden">
+                            <span class="text-base shrink-0">${getItemIcon(item)}</span>
+                            <span class="truncate block text-xs md:text-sm" title="${item.name}">${item.name}</span>
+                        </div>
+                    </td>
+                    <td class="py-2.5 px-2 text-slate-300 font-mono text-xs whitespace-nowrap">
+                        ${formatBytes(item.size)}
+                    </td>
+                    <td class="py-2.5 px-2">
+                        <div class="flex items-center gap-2">
+                            <div class="w-12 sm:w-16 bg-slate-700 rounded-full h-1.5 overflow-hidden shrink-0">
+                                <div class="bg-sky-400 h-full" style="width: ${Math.min(percent, 100)}%"></div>
+                            </div>
+                            <span class="text-xs text-slate-400 font-mono">${percent}%</span>
+                        </div>
+                    </td>
+                    <td class="py-2.5 px-2 text-right whitespace-nowrap">
+                        ${item.type === 'directory' ? `
+                            <button class="open-dir-btn bg-slate-700 hover:bg-sky-600 text-slate-200 hover:text-white px-2.5 py-1 rounded-md text-xs font-medium transition-colors inline-flex items-center gap-1">
+                                <span>Abrir</span> <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                            </button>
+                        ` : ''}
+                    </td>
+                `;
+
+                if (item.type === 'directory') {
+                    const btn = tr.querySelector('.open-dir-btn');
+                    btn.onclick = () => {
+                        currentDirectoryNode = item;
+                        renderBreadcrumb();
+                        renderCurrentDirectory();
+                        renderChart();
+                    };
+                }
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderTopFiles() {
+            const container = document.getElementById('topFilesList');
+            container.innerHTML = '';
+
+            if (globalTopFiles.length === 0) {
+                container.innerHTML = '<p class="text-slate-500 text-xs">Sin archivos</p>';
+                return;
+            }
+
+            globalTopFiles.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.className = 'p-2.5 bg-slate-900/60 rounded-xl border border-slate-700/40 flex items-center justify-between gap-3 text-xs';
+                item.innerHTML = `
+                    <div class="flex items-center gap-2.5 overflow-hidden">
+                        <span class="font-bold text-sky-400 text-xs min-w-[18px]">#${index + 1}</span>
+                        <div class="truncate">
+                            <div class="text-slate-200 font-medium truncate">${file.name}</div>
+                            <div class="text-slate-500 text-[10px] truncate" title="${file.path}">${file.path}</div>
+                        </div>
+                    </div>
+                    <span class="font-mono text-sky-300 font-semibold whitespace-nowrap">${formatBytes(file.size)}</span>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function renderCategories() {
+            const container = document.getElementById('categoriesList');
+            container.innerHTML = '';
+
+            const categorySizes = {};
+            let categorizedTotal = 0;
+
+            Object.entries(extensionStats).forEach(([ext, size]) => {
+                let categoryFound = 'Otros';
+                for (const [cat, exts] of Object.entries(CATEGORY_MAP)) {
+                    if (exts.includes(ext)) {
+                        categoryFound = cat;
+                        break;
+                    }
+                }
+                categorySizes[categoryFound] = (categorySizes[categoryFound] || 0) + size;
+                categorizedTotal += size;
+            });
+
+            const sortedCats = Object.entries(categorySizes).sort((a, b) => b[1] - a[1]);
+
+            sortedCats.forEach(([cat, size]) => {
+                const pct = categorizedTotal > 0 ? ((size / categorizedTotal) * 100).toFixed(1) : 0;
+                const el = document.createElement('div');
+                el.className = 'space-y-1';
+                el.innerHTML = `
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-300">${cat}</span>
+                        <span class="text-slate-400 font-mono">${formatBytes(size)} (${pct}%)</span>
+                    </div>
+                    <div class="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                        <div class="bg-indigo-500 h-full rounded-full" style="width: ${pct}%"></div>
+                    </div>
+                `;
+                container.appendChild(el);
+            });
+        }
+
+        function renderChart() {
+            const ctx = document.getElementById('sizeChart').getContext('2d');
+            
+            const items = [...currentDirectoryNode.children]
+                .sort((a, b) => b.size - a.size)
+                .slice(0, 7);
+
+            const labels = items.map(i => i.name.length > 15 ? i.name.substring(0, 15) + '...' : i.name);
+            const dataSizes = items.map(i => (i.size / (1024 * 1024)).toFixed(2));
+
+            if (sizeChartInstance) {
+                sizeChartInstance.destroy();
+            }
+
+            sizeChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Tamaño (MB)',
+                        data: dataSizes,
+                        backgroundColor: '#0284c7',
+                        borderRadius: 8,
+                        hoverBackgroundColor: '#38bdf8'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const rawSize = items[context.dataIndex].size;
+                                    return ` Tamaño: ${formatBytes(rawSize)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#94a3b8', font: { size: 11 } },
+                            grid: { display: false }
+                        },
+                        y: {
+                            ticks: { color: '#94a3b8', font: { size: 11 } },
+                            grid: { color: '#334155' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Listeners de botones
+        selectDirBtn.addEventListener('click', () => legacyFolderInput.click());
+        emptySelectBtn.addEventListener('click', () => legacyFolderInput.click());
+        
+        const triggerAppsAnalysis = () => {
+            alert("Para analizar los programas de Windows 11:\n\n1. Selecciona la carpeta 'Archivos de Programa' (Program Files)\n2. O tu carpeta 'AppData' en C:\\Users\\TuUsuario\\AppData\n\nEl analizador desglosará cada aplicación/juego instalado ordenado por peso.");
+            legacyFolderInput.click();
+        };
+
+        selectAppsBtn.addEventListener('click', triggerAppsAnalysis);
+        if (emptyAppsBtn) emptyAppsBtn.addEventListener('click', triggerAppsAnalysis);
+
+        emptyState.addEventListener('click', (e) => {
+            if (e.target.id !== 'emptySelectBtn' && !e.target.closest('#emptySelectBtn') &&
+                e.target.id !== 'emptyAppsBtn' && !e.target.closest('#emptyAppsBtn')) {
+                legacyFolderInput.click();
+            }
+        });
+        selectAdvancedBtn.addEventListener('click', startAnalysisAPI);
+
+    </script>
+</body>
+</html>
