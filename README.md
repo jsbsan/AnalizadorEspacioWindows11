@@ -85,7 +85,9 @@ Selecciona cualquiera de las siguientes carpetas de tu disco local `C:`:
 
 ---
 📄 Licencia
+
 Este proyecto está bajo la Licencia GPL3. Puedes usarlo, modificarlo y distribuirlo libremente.
 
+---
 Autor:
 Julio Sánchez Berro
