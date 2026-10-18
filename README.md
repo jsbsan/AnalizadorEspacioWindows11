@@ -1,8 +1,10 @@
 💾 Analizador de Espacio en Disco para Navegador Web
 
 Un analizador de almacenamiento de disco duro ejecutable 100% en el navegador web sin necesidad de instalar ningún software ni dependencias. Permite inspeccionar carpetas de tu sistema, medir el espacio consumido por tus archivos, explorar subdirectorios y analizar carpetas de aplicaciones en Windows 11.
-![Licencia](https://img.shields.io/badge/licencia-MIT-blue.svg)
+
+
 ![Tecnología](https://img.shields.io/badge/HTML5-JavaScript%20ES6+-orange.svg)
+
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.x-38bdf8.svg)
 
 ---
