@@ -9,13 +9,21 @@ Un analizador de almacenamiento de disco duro ejecutable 100% en el navegador we
 
 ---
 🚀 Características Principales
+
 🔒 100% Privado y Local: Funciona totalmente del lado del cliente. Ningún archivo, nombre o dato se sube a ningún servidor.
+
 ⚡ Sin Congelamiento (Procesamiento Asíncrono): Procesa decenas de miles de archivos en segundo plano utilizando lotes asíncronos (`async/await`) manteniendo la interfaz fluida en todo momento.
+
 📊 Gráfica Interactiva & Breadcrumbs: Visualiza las carpetas más pesadas con gráficas dinámicas (Chart.js) y navega por los subdirectorios utilizando migas de pan (breadcrumbs).
+
 🗂️ Categorización Automática: Clasifica el espacio ocupado según el tipo de archivo (Vídeos, Imágenes, Audio, Documentos, Archivos Comprimidos, Ejecutables).
+
 🏆 Top 10 Archivos Más Pesados: Detecta automáticamente cuáles son los 10 archivos individuales de mayor tamaño dentro del área escaneada.
+
 🛡️ Filtrado Inteligente de Archivos de Sistema: Ignora de forma transparente archivos y carpetas del sistema operativo inaccesibles o protegidos (como `$Recycle.Bin`, `System Volume Information`, `pagefile.sys`, etc.).
+
 💻 Modo Especial para Programas en Windows 11: Guía e interfaz optimizada para medir el peso de tus aplicaciones y juegos analizando las carpetas `Program Files`, `Program Files (x86)` y `AppData`.
+
 
 ---
 🛠️ Tecnologías Utilizadas
